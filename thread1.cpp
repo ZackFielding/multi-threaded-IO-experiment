@@ -36,11 +36,16 @@ int main()
 		const long long max_read_rev {max_read_fwd + 1L};	 
 
 		std::thread from_start_thread ([&](){
-			for(size_t i {0}; i < (arr_size/2); ++i)
+			for(size_t i {0}; i < max_read_fwd; ++i)
 				read_streams.at(0) >> array_heap[i];
 		});	
 
-		reverseFileRead();	
+		reverseFileRead(
+				arr_size,
+				max_read_rev,
+				read_streams.at(1),
+				array_heap
+						);	
 
 		from_start_thread.join();
 	}

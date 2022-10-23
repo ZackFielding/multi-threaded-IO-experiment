@@ -87,8 +87,10 @@ void reverseFindPos(const unsigned long long max_read, std::ifstream& file, std:
 	pos_que.push_back(std::nan("NAN"));	
 }
 
-bool reverseGet(std::deque<TYPE>& pos_que)
+bool reverseGet(const auto arr_size, unsigned long long max_read, std::ifstream& duplicate_RRF,
+		std::deque<TYPE>& pos_que, int array_heap[])
 {
+	auto cur_arr_write_pos {max_read};
 	double seekg_d; // double as it needs to accept NAN
 	while(true)
 	{
@@ -103,7 +105,8 @@ bool reverseGet(std::deque<TYPE>& pos_que)
 			file.seekg(reinterpret_cast<long long>(seekg_d),
 					std::ios_base_beg);
 			// write to heap allocated array - starting from back
-			
+			if (file >> array_heap[cur_arr_write_pos--])
+
 			// lock deque -> pop front last read item
 		}
 		else
@@ -112,7 +115,8 @@ bool reverseGet(std::deque<TYPE>& pos_que)
 	return true;
 }
 
-void reverseFileRead(const unsigned long long max_read, std::ifstream& file)
+void reverseFileRead(const auto arr_size, const unsigned long long max_read,
+		std::ifstream& file, int array_heap[])
 {
 	 // que that will be accessed by multiple threads
 	std::deque<double> pos_que;
@@ -128,7 +132,14 @@ void reverseFileRead(const unsigned long long max_read, std::ifstream& file)
 		 {
 		 	std::unique_lock<std::mutex> LOCK (sleep_mut); //aquire cond lock
 			duplicate_RRF.open("test-read.txt", std::ios_base::ate);
-			while (reverseGet(pos_que)){}
+			while (reverseGet(
+						arr_size, // array size
+						max_read, // number of elements to index into array
+						diplicate_RRF, // duplicate of read file
+						pos_que, // deque obj
+						array_heap // array to be read to
+							 ))
+								{}
 		 }
 		);
 }
