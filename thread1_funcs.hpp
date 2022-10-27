@@ -91,12 +91,14 @@ void reverseFindPos(const unsigned long long max_read, std::ifstream& file, std:
 }
 
 bool reverseGet(std::unique_lock<std::mutex>& LOCK, unsigned long long arr_index, 
-		unsigned long long max_read, std::ifstream& duplicate_RRF,
-		std::deque<double>& pos_que, int array_heap[])
+		unsigned long long max_read, std::deque<double>& pos_que, int array_heap[])
 {
 		// returns true if incurs NAN -> false if it never does (error)
 		// while condition + NAN both control for never accessing empty deque
-double seekg_d; // double as it needs to accept NAN
+	std::ifstream duplicate_RRF;
+	duplicate_RRF.open("test-read.txt", std::ios_base::ate);
+
+	double seekg_d; // double as it needs to accept NAN
 	unsigned long long stop_pos {(arr_index--) - (max_read)};
 	while(arr_index >= stop_pos)
 	{
@@ -134,28 +136,25 @@ void reverseFileRead(const unsigned long long arr_size, const unsigned long long
 	std::thread reverse_read_thread(
 			&reverseFindPos,
 			max_read,
-			file,
-			pos_que);
+			std::ref(file),
+			std::ref(pos_que));
 
-	std::ifstream duplicate_RRF;
 	std::thread reverse_write_thread
-		([&]()
+		([=](std::deque<double>& pos_que, int* array_heap)
 		 {
 		 	std::unique_lock<std::mutex> LOCK (sleep_mut); //aquire cond lock
-			duplicate_RRF.open("test-read.txt", std::ios_base::ate);
 			if (reverseGet(
 						LOCK, // unique_lock by ref
 						arr_size, // array size
 						max_read, // number of elements to index into array
-						duplicate_RRF, // duplicate of read file
 						pos_que, // deque obj
 						array_heap // array to be read to
 					 ))
 				std::clog << "Reverse get func exited normally.\n";
 			else
 				std::clog << "Reverse get func exited without incurring NAN.\n";
-		 }
-		);
+		 },
+		std::ref(pos_que), array_heap);
 
 	reverse_read_thread.join();
 	reverse_write_thread.join();

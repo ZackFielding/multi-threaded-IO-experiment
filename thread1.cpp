@@ -21,11 +21,11 @@ int main()
 	int* array_heap {nullptr};
 	unsigned long long arr_size {};
 	std::thread open_get_count_thread 
-		([&](){
-				read_streams.at(0).open(read_file);
-				arr_size = getNumberCount(read_streams.at(0));
+		([=](std::ifstream& file, unsigned long long& arr_size) mutable {
+				file.open(read_file);
+				arr_size = getNumberCount(file);
 				array_heap = new int[arr_size];
-			  });
+			  }, std::ref(read_streams.at(0)), std::ref(arr_size));
 
 	 // open second stream
 	read_streams.at(1).open(read_file, std::ios_base::ate);
@@ -39,14 +39,20 @@ int main()
 		const long long max_read_fwd {std::ceil(static_cast<long double>(arr_size)/2)};
 		const long long max_read_rev {max_read_fwd + 1L};	 
 
-		std::thread from_start_thread ([&](){
+		std::thread from_start_thread ([=](std::ifstream& file, int* array_heap){
 			for(long long i {0}; i < max_read_fwd; ++i)
-				if (!read_streams.at(0) >> array_heap[i])
+			{
+				if (!file >> array_heap[i])
 				{
 					std::cerr << "Failure in forward reading into heap array.\n";
 					break;
 				}
-		});	
+				else
+				{
+					std::clog << array_heap[i] << " t";
+				}
+			}
+		}, std::ref(read_streams.at(0)), array_heap);	
 
 		reverseFileRead(
 				arr_size,
@@ -58,6 +64,7 @@ int main()
 		from_start_thread.join();
 	}
 
+	std::clog << "Array test: " << array_heap[0];
 	for (unsigned long long ind {0}; ind < arr_size; ++ind)
 		std::cout << array_heap[ind] << ' ';
 
