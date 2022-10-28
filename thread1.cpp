@@ -19,7 +19,7 @@ int main()
 	 // open first read-only file && get it's number count
 	std::vector<int> written_vector;
 	std::thread open_get_count_thread 
-		([](std::ifstream& file){
+		([=](std::ifstream& file, std::vector<int> written_vector)->void{
 				file.open(read_file);
 				written_vector.resize(getNumberCount(file)); // re-size vector
 			  }, std::ref(read_streams.at(0)), std::ref(written_vector));
@@ -29,24 +29,24 @@ int main()
 
 	if (!!read_streams.at(0) && !!read_streams.at(1))
 	{
-		 // compute max forward and reverse index reads 
-		if (written_vector % 2 != 0) // if size is odd
-			const double max_read_fwd {written_vector.size() / 2 + 1};
+		 // compute max forward and reverse index reads
+		double max_read_fwd {};
+		if (written_vector.size() % 2 != 0) // if size is odd
+			max_read_fwd = written_vector.size() / 2 + 1;
 		else
-			const double max_read_fwd {written_vector.size() / 2};
+			max_read_fwd = written_vector.size() / 2;
 
-		std::thread from_start_thread ([=](std::ifstream& file, std::vector<int> written_vector){
+		std::thread from_start_thread ([=](std::ifstream& file, 
+					std::vector<int> written_vector){
 			for(double fwd_ind {0.0}; fwd_ind < max_read_fwd; ++fwd_ind)
 			{
-				if (!file >> written_vector.at(fwd_ind))
+				if (!(file >> written_vector.at(fwd_ind)))
 				{
-					CONSOLE_ERROR << "Failure in forward reading into heap array.\n";
+					CONSOLE_ERROR << "Failure in forward reading into vector.\n";
 					break;
 				}
 				else
-				{
-					CONSOLE_LOG << "read from secondary thread.. ";
-				}
+					CONSOLE_LOG << "read ";
 			}
 		}, std::ref(read_streams.at(0)), std::ref(written_vector));	
 
@@ -57,16 +57,19 @@ int main()
 	}
 	else
 	{
-		std::clog << "Streams failed to open.\n";
+		CONSOLE_LOG << "Streams failed to open.\n";
 	}
 
-	std::clog << "Array test: " << array_heap[0];
-	for (unsigned long long ind {0}; ind < arr_size; ++ind)
-		CONSOLE_OUT << array_heap[ind] << ' ';
+	 // testing to see if successful
+	for (const auto& read_vec : written_vector)
+		CONSOLE_OUT << read_vec << ' ';
 
-	delete [] array_heap;
+	 // check if any files are still open in main & close if true	
 	for (auto& rs : read_streams)
-		rs.close();
+	{
+		if (rs.is_open())
+			rs.close();
+	}
 
 	return 0;
 }

@@ -5,6 +5,7 @@
 #include <thread>
 #include <string>
 #include <array>
+#include <vector>
 #include <fstream>
 #include <memory>
 #include <deque>
@@ -43,10 +44,10 @@ bool readMultipleDelim(std::ifstream& file, const std::array<char, AR_SIZE>& del
 	return false;
 }
 
-unsigned long long getNumberCount(std::ifstream& file)
+size_t getNumberCount(std::ifstream& file)
 {
 	const auto file_start_pos {file.tellg()};
-	unsigned long long num_count {0};
+	size_t num_count {0};
 	constexpr std::array<char, 3> delim_array {' ', '\n', '\r'};
 	while (readMultipleDelim<delim_array.size()>(file, delim_array))
 		++num_count;
@@ -105,34 +106,35 @@ bool reverseGet(std::unique_lock<std::mutex>& LOCK, std::deque<double>& pos_que,
 	duplicate_RRF.open("test-read.txt", std::ios_base::ate);
 	double seekg_d; // double as it needs to accept NAN
 	double abs_stop_pos {written_vector.size()/2};
-	double cur_vec_pos {writte_vector.size()-1};
+	double cur_vec_pos {written_vector.size()-1};
 
 	while (cur_vec_pos > abs_stop_pos)
 	{
-		// pass in LOCK or create unique_lock here?
+		// pass in LOCK 
 		if (pos_que.empty())
 			g_con_var.wait(LOCK);
 
 		 // read front of deque
 		seekg_d = pos_que.front();
-		// if read == NAN -> return true (error-free run) 
+		// if read != NAN 
 		if (!std::isnan(seekg_d))
 		{
-			duplicate_RRF.seekg(static_cast<long long>(seekg_d),
-					std::ios_base::beg);
-			// write to heap allocated array - starting from back
+			 // seek duplicate reverse read file to read pos rel to file start
+			duplicate_RRF.seekg(seekg_d, std::ios_base::beg);
+			// write to vector, starting from last index position
 			if (duplicate_RRF >> written_vector.at(cur_vec_pos++))
 			{
-				 // lock deque -> remove element it just read -> unlock deque
+				 // if read is successful
+				   // lock deque -> remove element it just read -> unlock deque
 				pop_mut.lock();
 				pos_que.pop_front();
 				pop_mut.unlock();
 			}
 		}
-		else
+		else // if read == NAN - reverse read finished (no more writing required)
 		{
 			duplicate_RRF.close();
-			return true;
+			return true; // true signals successful reverse file read
 		}
 	}
 	return false;
