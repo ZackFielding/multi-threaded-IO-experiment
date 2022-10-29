@@ -65,9 +65,9 @@ std::condition_variable g_con_var;
 
 void reverseFindPos(const double max_read, std::ifstream& file, std::deque<double>& pos_que)
 {
-	 // start off at EOF - 2 posisition to read
+	 // start off at EOF - 1 posisition to read
 	long long cur_pos {file.tellg()};
-	cur_pos -= 2L;
+	cur_pos -= 1L;
 	file.seekg(cur_pos, std::ios_base::beg);
 	 // c_pair will hold x2 char + null term for reading
 	char c_pair [] {"A"}; //null terminated - sizeof == 2
@@ -76,10 +76,25 @@ void reverseFindPos(const double max_read, std::ifstream& file, std::deque<doubl
 
 	// NOT ENTERING WHILE LOOP -> file may have fail flag set? .get() might be issue
 	std::unique_lock<std::mutex> LOCK (sleep_mut);
-	while (cur_num_reads < max_read && file.get(c_pair, sizeof c_pair))
+	while (cur_num_reads < max_read)
 	{
-			// if lead IS space character AND lead+1 is NOT a space character
-			 // use peek for lead+1 to prevent EOF flag trigger
+		if (file.peek() != 10)
+		{
+			// if not newline/carriage return -> extract (or else get fails)
+			// if get == white space && peek (next char) != white space -> push into deque obj
+			// if get != white space OR peek == white space -> move backwards in file read position
+			if (file.get(c_pair, sizeof c_pair) && file.peek())
+			{
+
+			}
+		}
+		else
+		{
+			cur_pos -= 2L;
+		}
+
+		// BELOW - failed logic code that needs to be worked into working logic code above (in-process)
+			// - being used a framework to build into new logic block above
 		if (std::isspace(c_pair[0]) != 0 && std::isspace(file.peek()) == 0)
 		{
 			 // push current index into que
