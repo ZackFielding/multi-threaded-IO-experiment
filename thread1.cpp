@@ -19,7 +19,7 @@ int main()
 	 // open first read-only file && get it's number count
 	std::vector<int> written_vector;
 	std::thread open_get_count_thread 
-		([=](std::ifstream& file, std::vector<int> written_vector)->void{
+		([=](std::ifstream& file, std::vector<int>& written_vector)->void{
 				file.open(read_file);
 				written_vector.resize(getNumberCount(file)); // re-size vector
 			  }, std::ref(read_streams.at(0)), std::ref(written_vector));
@@ -36,8 +36,8 @@ int main()
 		else
 			max_read_fwd = written_vector.size() / 2;
 
-		std::thread from_start_thread ([=](std::ifstream& file, 
-					std::vector<int> written_vector){
+		std::thread from_start_thread ([max_read_fwd](std::ifstream& file, 
+					std::vector<int>& written_vector){
 			for(double fwd_ind {0.0}; fwd_ind < max_read_fwd; ++fwd_ind)
 			{
 				if (!(file >> written_vector.at(fwd_ind)))
@@ -45,8 +45,6 @@ int main()
 					CONSOLE_ERROR << "Failure in forward reading into vector.\n";
 					break;
 				}
-				else
-					CONSOLE_LOG << "read ";
 			}
 		}, std::ref(read_streams.at(0)), std::ref(written_vector));	
 

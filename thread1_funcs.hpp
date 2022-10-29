@@ -56,6 +56,7 @@ size_t getNumberCount(std::ifstream& file)
 	file.clear();
 	file.seekg(file_start_pos, std::ios_base::beg);	
 
+	CONSOLE_LOG << "Vector size: " << num_count << '\n';
 	return num_count;
 }
 
@@ -67,11 +68,13 @@ void reverseFindPos(const double max_read, std::ifstream& file, std::deque<doubl
 	 // start off at EOF - 2 posisition to read
 	long long cur_pos {file.tellg()};
 	cur_pos -= 2L;
+	file.seekg(cur_pos, std::ios_base::beg);
 	 // c_pair will hold x2 char + null term for reading
 	char c_pair [] {"A"}; //null terminated - sizeof == 2
 	 // keeps track of numbers that WILL BE read (based on array size) 
 	unsigned long long cur_num_reads {0};
 
+	// NOT ENTERING WHILE LOOP -> file may have fail flag set? .get() might be issue
 	std::unique_lock<std::mutex> LOCK (sleep_mut);
 	while (cur_num_reads < max_read && file.get(c_pair, sizeof c_pair))
 	{
@@ -103,7 +106,7 @@ bool reverseGet(std::unique_lock<std::mutex>& LOCK, std::deque<double>& pos_que,
 		// returns true if incurs NAN -> false if it never does (error)
 		// while condition + NAN both control for never accessing empty deque
 	std::ifstream duplicate_RRF;
-	duplicate_RRF.open("test-read.txt", std::ios_base::ate);
+	duplicate_RRF.open("test-read.txt");
 	double seekg_d; // double as it needs to accept NAN
 	double abs_stop_pos {written_vector.size()/2};
 	double cur_vec_pos {written_vector.size()-1};
