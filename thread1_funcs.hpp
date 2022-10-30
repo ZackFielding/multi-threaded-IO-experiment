@@ -83,33 +83,19 @@ void reverseFindPos(const double max_read, std::ifstream& file, std::deque<doubl
 			// if not newline/carriage return -> extract (or else get fails)
 			// if get == white space && peek (next char) != white space -> push into deque obj
 			// if get != white space OR peek == white space -> move backwards in file read position
-			if (file.get(c_pair, sizeof c_pair) && file.peek())
+			if (std::isspace(file.get(c_pair, sizeof c_pair)) != 0  && std::issapce(file.peek()) == 0)
 			{
-
+				pos_que.push_back(static_cast<double>(cur_pos)); // cast to double as need to handle NAN value
+				g_con_var.notify_one(); // notify writing thread
+				++cur_num_reads; // increment to keep track of number of reads
 			}
 		}
-		else
-		{
-			cur_pos -= 2L;
-		}
-
-		// BELOW - failed logic code that needs to be worked into working logic code above (in-process)
-			// - being used a framework to build into new logic block above
-		if (std::isspace(c_pair[0]) != 0 && std::isspace(file.peek()) == 0)
-		{
-			 // push current index into que
-			pos_que.push_back(static_cast<double>(cur_pos));
-			g_con_var.notify_one(); // notify writing thread
-			++cur_num_reads; // increment to keep track of number of reads
-			cur_pos -= 3;
-		}
-		else
-			cur_pos -= 2;
-		 // set new read position for next loop
-		file.seekg(cur_pos, std::ios_base::end);
+		 // does not matter if found read pos or not -> set back two positions in read file
+		cur_pos -= 2L;
+		file.seekg(cur_pos, std::ios_base::beg);
 	}
 	
-	 // when while fails -> push NAN to deque to stop extraction thread
+	 // once max number of reverse file reads occurs -> push NAN to deque to stop extraction thread
 	pos_que.push_back(std::nan("NAN"));	
 	file.close(); // close file [read_files.at(1) via main]
 }
@@ -122,9 +108,10 @@ bool reverseGet(std::unique_lock<std::mutex>& LOCK, std::deque<double>& pos_que,
 		// while condition + NAN both control for never accessing empty deque
 	std::ifstream duplicate_RRF;
 	duplicate_RRF.open("test-read.txt");
-	double seekg_d; // double as it needs to accept NAN
-	double abs_stop_pos {written_vector.size()/2};
-	double cur_vec_pos {written_vector.size()-1};
+	double seekg_d {}, abs_stop_pos {written_vector.size()/2}, 
+		   cur_vec_pos {written_vector.size()-1};
+	std::stringstream char_to_double_stream; // middle-man between file read & double vector write
+	std::array<char, 8> temp_char_hold_arr;
 
 	while (cur_vec_pos > abs_stop_pos)
 	{
