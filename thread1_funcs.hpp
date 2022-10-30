@@ -68,7 +68,7 @@ void reverseFindPos(const double max_read, std::ifstream& file, std::deque<doubl
 {
 	 // start off at EOF - 1 posisition to read
 	long long cur_pos {file.tellg()};
-	cur_pos -= 1L;
+	cur_pos -= 4L;
 	file.seekg(cur_pos, std::ios_base::beg);
 	 // c_pair will hold x2 char + null term for reading
 	char c_pair [] {"A"}; //null terminated - sizeof == 2
@@ -79,23 +79,37 @@ void reverseFindPos(const double max_read, std::ifstream& file, std::deque<doubl
 	std::unique_lock<std::mutex> LOCK (sleep_mut);
 	while (cur_num_reads < max_read && file.tellg() != -1L)
 	{
-		if ((int)file.peek() != 10)
+		if (file.peek() != '\n' && file.peek() != '\r')
 		{
 			// if not newline/carriage return -> extract (or else get fails)
 			// if get == white space && peek (next char) != white space -> push into deque obj
 			// if get != white space OR peek == white space -> move backwards in file read position
-			if (file.get(c_pair, sizeof c_pair) && 
-					(std::isspace(c_pair[0]) != 0  && std::isspace(file.peek()) == 0))
+			if (file.get(c_pair, sizeof c_pair))
 			{
-				pos_que.push_back(static_cast<double>(cur_pos)); // cast to double as need to handle NAN value
-				g_con_var.notify_one(); // notify writing thread
-				++cur_num_reads; // increment to keep track of number of reads
-				cur_pos -= 3L;
+				CONSOLE_LOG << c_pair[0] << " ..peek:" << file.peek() << ' ';
+				if (std::isspace(c_pair[0]) != 0  && std::isspace(file.peek()) == 0)
+				{
+					CONSOLE_LOG << "...Entered... ";
+					pos_que.push_back(static_cast<double>(cur_pos-1)); // cast to double as need to handle NAN value
+					g_con_var.notify_one(); // notify writing thread
+					++cur_num_reads; // increment to keep track of number of reads
+					cur_pos -= 3L;
+				}
+				else
+				{
+					--cur_pos;
+				}
 			}
+			else
+			{
+				CONSOLE_LOG << "get() failed. ";
+				break;
+			}	
 		}
 		else
 		{
 			cur_pos -= 2L;
+			CONSOLE_LOG << "Newline char found. ";
 		}
 		file.seekg(cur_pos, std::ios_base::beg);
 	}
@@ -105,16 +119,31 @@ void reverseFindPos(const double max_read, std::ifstream& file, std::deque<doubl
 	file.close(); // close file [read_files.at(1) via main]
 }
 
-template <size_t SIZE>
-size_t numberOfChars(std::array<char, SIZE>& array)
+template <size_t WA_SIZE, size_t DA_SIZE> // WA = write_array, DA = delims array
+bool getMultipleDelim(std::ifstream& file, std::array<char, WA_SIZE>& write_array,
+		const std::array<char, DA_SIZE>& delims_array, size_t& num_char_extracted)
 {
-	size_t non_char_count {0};
-	for (const char& read : array)
+	static auto l_checkDelims = [&](const char cur_char)->bool
 	{
-		if (read != '\n')
-			++non_char_count;
+		for (size_t ind {0}; ind < DA_SIZE; ++ind)
+		{
+			if (cur_char == delims_array.at(ind))
+				return true;
+		}
+		return false;
+	};
+
+	bool extraction_successful {false};
+	static char c_hold {'A'};
+	while (num_char_extracted < WA_SIZE && !l_checkDelims(file.peek()))
+	{
+		file.get(c_hold); // get() current char AFTER checking != any of the delims
+		write_array.at(num_char_extracted++) = c_hold;
+		if (!extraction_successful)
+			extraction_successful = true;
 	}
-	return non_char_count;
+
+	return extraction_successful;
 }
 
 // remove max read and array size
@@ -130,6 +159,8 @@ bool reverseGet(std::unique_lock<std::mutex>& LOCK, std::deque<double>& pos_que,
 	std::stringstream char_to_double_stream; // middle-man between file read & double vector write
 	std::array<char, 17> temp_c_hold;
 	temp_c_hold.fill('\n');
+	constexpr std::array<char, 3> delim_array {' ', '\n', '\r'};
+	size_t num_char_extracted {0};
 
 	while (cur_vec_pos > abs_stop_pos)
 	{
@@ -144,14 +175,12 @@ bool reverseGet(std::unique_lock<std::mutex>& LOCK, std::deque<double>& pos_que,
 		{
 			 // seek duplicate reverse read file to read pos rel to file start
 			duplicate_RRF.seekg(seekg_d, std::ios_base::beg);
+			num_char_extracted = 0; // set to 0 prior to modified get()
 			// write to vector, starting from last index position
-			if (duplicate_RRF.get(&temp_c_hold.at(0), sizeof temp_c_hold))
+			if (getMultipleDelim<temp_c_hold.size(), delim_array.size()>
+					(duplicate_RRF, temp_c_hold, delim_array, num_char_extracted)) // extract until white space or newline
 			{
-				 // if read is successful
-				   // lock deque -> remove element it just read -> unlock deque
-				char_to_double_stream.write(&temp_c_hold.at(0), 
-						numberOfChars<temp_c_hold.size()>(temp_c_hold));
-				 // output from stream as int to vector at current pos & ++position
+				char_to_double_stream.write(&temp_c_hold.at(0), num_char_extracted); // write to stringstream
 				if (!(char_to_double_stream >> std::dec >> written_vector.at(cur_vec_pos--)))
 				{
 					CONSOLE_ERROR << "Failed string stream extraction.\n";
