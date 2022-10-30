@@ -13,6 +13,7 @@
 #include <cmath>
 #include <mutex>
 #include <condition_variable>
+#include <sstream>
 
 #define CONSOLE_LOG std::clog
 #define CONSOLE_ERROR std::cerr
@@ -76,28 +77,44 @@ void reverseFindPos(const double max_read, std::ifstream& file, std::deque<doubl
 
 	// NOT ENTERING WHILE LOOP -> file may have fail flag set? .get() might be issue
 	std::unique_lock<std::mutex> LOCK (sleep_mut);
-	while (cur_num_reads < max_read)
+	while (cur_num_reads < max_read && file.tellg() != -1L)
 	{
-		if (file.peek() != 10)
+		if ((int)file.peek() != 10)
 		{
 			// if not newline/carriage return -> extract (or else get fails)
 			// if get == white space && peek (next char) != white space -> push into deque obj
 			// if get != white space OR peek == white space -> move backwards in file read position
-			if (std::isspace(file.get(c_pair, sizeof c_pair)) != 0  && std::issapce(file.peek()) == 0)
+			if (file.get(c_pair, sizeof c_pair) && 
+					(std::isspace(c_pair[0]) != 0  && std::isspace(file.peek()) == 0))
 			{
 				pos_que.push_back(static_cast<double>(cur_pos)); // cast to double as need to handle NAN value
 				g_con_var.notify_one(); // notify writing thread
 				++cur_num_reads; // increment to keep track of number of reads
+				cur_pos -= 3L;
 			}
 		}
-		 // does not matter if found read pos or not -> set back two positions in read file
-		cur_pos -= 2L;
+		else
+		{
+			cur_pos -= 2L;
+		}
 		file.seekg(cur_pos, std::ios_base::beg);
 	}
 	
 	 // once max number of reverse file reads occurs -> push NAN to deque to stop extraction thread
 	pos_que.push_back(std::nan("NAN"));	
 	file.close(); // close file [read_files.at(1) via main]
+}
+
+template <size_t SIZE>
+size_t numberOfChars(std::array<char, SIZE>& array)
+{
+	size_t non_char_count {0};
+	for (const char& read : array)
+	{
+		if (read != '\n')
+			++non_char_count;
+	}
+	return non_char_count;
 }
 
 // remove max read and array size
@@ -111,7 +128,8 @@ bool reverseGet(std::unique_lock<std::mutex>& LOCK, std::deque<double>& pos_que,
 	double seekg_d {}, abs_stop_pos {written_vector.size()/2}, 
 		   cur_vec_pos {written_vector.size()-1};
 	std::stringstream char_to_double_stream; // middle-man between file read & double vector write
-	std::array<char, 8> temp_char_hold_arr;
+	std::array<char, 17> temp_c_hold;
+	temp_c_hold.fill('\n');
 
 	while (cur_vec_pos > abs_stop_pos)
 	{
@@ -127,10 +145,21 @@ bool reverseGet(std::unique_lock<std::mutex>& LOCK, std::deque<double>& pos_que,
 			 // seek duplicate reverse read file to read pos rel to file start
 			duplicate_RRF.seekg(seekg_d, std::ios_base::beg);
 			// write to vector, starting from last index position
-			if (duplicate_RRF >> written_vector.at(cur_vec_pos++))
+			if (duplicate_RRF.get(&temp_c_hold.at(0), sizeof temp_c_hold))
 			{
 				 // if read is successful
 				   // lock deque -> remove element it just read -> unlock deque
+				char_to_double_stream.write(&temp_c_hold.at(0), 
+						numberOfChars<temp_c_hold.size()>(temp_c_hold));
+				 // output from stream as int to vector at current pos & ++position
+				if (!(char_to_double_stream >> std::dec >> written_vector.at(cur_vec_pos--)))
+				{
+					CONSOLE_ERROR << "Failed string stream extraction.\n";
+					break;
+				}
+
+				char_to_double_stream.clear(); // prior line will set failbit -> true (clear stream state flags)
+				 // lock read thread from accessing deque while current thread pops off just-read stream position
 				pop_mut.lock();
 				pos_que.pop_front();
 				pop_mut.unlock();
