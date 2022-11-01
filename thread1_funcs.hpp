@@ -57,8 +57,8 @@ size_t getNumberCount(std::ifstream& file)
 	file.clear();
 	file.seekg(file_start_pos, std::ios_base::beg);	
 
-	CONSOLE_LOG << "Vector size: " << num_count << '\n';
-	return num_count;
+	//CONSOLE_LOG << "Vector size: " << num_count << '\n';
+	return num_count; 
 }
 
 std::mutex sleep_mut, pop_mut;
@@ -68,49 +68,32 @@ void reverseFindPos(const double max_read, std::ifstream& file, std::deque<doubl
 {
 	 // start off at EOF - 1 posisition to read
 	long long cur_pos {file.tellg()};
-	cur_pos -= 4L;
+	cur_pos -= 3L; // skip over new line and carriage return characters prior to EOF
 	file.seekg(cur_pos, std::ios_base::beg);
-	 // c_pair will hold x2 char + null term for reading
-	char c_pair [] {"A"}; //null terminated - sizeof == 2
-	 // keeps track of numbers that WILL BE read (based on array size) 
-	unsigned long long cur_num_reads {0};
+	char c_pair[] {"A"}; // c_pair needs to be array for get() with delim (needs to be null terminated)
+	unsigned long long cur_num_reads {0}; // keeps track of numbers that WILL BE read (based on array size) 
+	constexpr char null_char {static_cast<char>(0)}; // needs to be a char NOT in reading document
 
-	// NOT ENTERING WHILE LOOP -> file may have fail flag set? .get() might be issue
 	std::unique_lock<std::mutex> LOCK (sleep_mut);
 	while (cur_num_reads < max_read && file.tellg() != -1L)
 	{
-		if (file.peek() != '\n' && file.peek() != '\r')
+		if (file.get(&c_pair[0], sizeof c_pair, null_char)) // overloaded get() to allow retrieval of newline & carriage return characters
 		{
-			// if not newline/carriage return -> extract (or else get fails)
-			// if get == white space && peek (next char) != white space -> push into deque obj
-			// if get != white space OR peek == white space -> move backwards in file read position
-			if (file.get(c_pair, sizeof c_pair))
+			 // if read == white space && peek (next char) != white space -> push into deque obj
+			if (std::isspace(c_pair[0]) != 0  && std::isspace(file.peek()) == 0)
 			{
-				CONSOLE_LOG << c_pair[0] << " ..peek:" << file.peek() << ' ';
-				if (std::isspace(c_pair[0]) != 0  && std::isspace(file.peek()) == 0)
-				{
-					CONSOLE_LOG << "...Entered... ";
-					pos_que.push_back(static_cast<double>(cur_pos-1)); // cast to double as need to handle NAN value
-					g_con_var.notify_one(); // notify writing thread
-					++cur_num_reads; // increment to keep track of number of reads
-					cur_pos -= 3L;
-				}
-				else
-				{
-					--cur_pos;
-				}
-			}
-			else
-			{
-				CONSOLE_LOG << "get() failed. ";
-				break;
-			}	
-		}
-		else
+				pos_que.push_back(cur_pos+1); // +1 as cur_pos pointed at white space character
+				g_con_var.notify_one(); // notify writing thread
+				++cur_num_reads; // increment to keep track of number of reads
+				cur_pos -= 3L;
+			} else
+				--cur_pos;
+		} else
 		{
-			cur_pos -= 2L;
-			CONSOLE_LOG << "Newline char found. ";
-		}
+			CONSOLE_LOG << "get() failed at " << cur_num_reads << " number of previous reads\n";
+			break;
+		}	
+		 // seek to new position
 		file.seekg(cur_pos, std::ios_base::beg);
 	}
 	
@@ -137,7 +120,7 @@ bool getMultipleDelim(std::ifstream& file, std::array<char, WA_SIZE>& write_arra
 	static char c_hold {'A'};
 	while (num_char_extracted < WA_SIZE && !l_checkDelims(file.peek()))
 	{
-		file.get(c_hold); // get() current char AFTER checking != any of the delims
+		file.get(c_hold);
 		write_array.at(num_char_extracted++) = c_hold;
 		if (!extraction_successful)
 			extraction_successful = true;
@@ -162,7 +145,7 @@ bool reverseGet(std::unique_lock<std::mutex>& LOCK, std::deque<double>& pos_que,
 	constexpr std::array<char, 3> delim_array {' ', '\n', '\r'};
 	size_t num_char_extracted {0};
 
-	while (cur_vec_pos > abs_stop_pos)
+	while (cur_vec_pos >= abs_stop_pos)
 	{
 		// pass in LOCK 
 		if (pos_que.empty())
@@ -188,6 +171,7 @@ bool reverseGet(std::unique_lock<std::mutex>& LOCK, std::deque<double>& pos_que,
 				}
 
 				char_to_double_stream.clear(); // prior line will set failbit -> true (clear stream state flags)
+				char_to_double_stream.str("");
 				 // lock read thread from accessing deque while current thread pops off just-read stream position
 				pop_mut.lock();
 				pos_que.pop_front();
